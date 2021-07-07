@@ -1,0 +1,25 @@
+{
+  "name": "api-dadospravc",
+  "version": "0",
+  "description": "",
+  "main": "serve.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node serve.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Slender1808/Search-CNPJ.git"
+  },
+  "keywords": [],
+  "author": "jadson.g-matos@outlook.com",
+  "license": "AGPL-3.0 License",
+  "bugs": {
+    "url": "https://github.com/Slender1808/Search-CNPJ/issues"
+  },
+  "homepage": "https://github.com/Slender1808/Search-CNPJ#readme",
+  "dependencies": {
+    "express": "^4.17.1",
+    "sqlite3": "^5.0.2"
+  }
+}
