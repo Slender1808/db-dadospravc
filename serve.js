@@ -18,14 +18,14 @@ function search_cnpj(search) {
           if (err) {
             reject(err);
           } else {
-            let result = {data:{}};
+            let result = { data: [] };
             if (data.length == 0) {
               result.status = 404;
               result.data = {};
             } else {
               result.status = 200;
-              data.forEach((row) => {
-                result.data[row.cnpj] = row.razao_social;
+              data.forEach((row, i) => {
+                result.data[i] = [row.cnpj, row.razao_social];
               });
             }
             resolve(result);
