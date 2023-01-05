@@ -31,7 +31,7 @@ db.parallelize(() => {
 });
 */
 
-/*
+
 import sqlite3 from "sqlite3";
 const db = new sqlite3.Database("/tmp/db.sqlite");
 
@@ -40,8 +40,9 @@ db.parallelize(() => {
     `
       SELECT path 
       FROM file 
-      WHERE data MATCH 'estados' 
-      ORDER BY rank;`,
+      WHERE data MATCH 'test' 
+      ORDER BY rank
+      LIMIT 100;`,
     (err, data) => {
       if (err) {
         console.log(err);
@@ -51,8 +52,9 @@ db.parallelize(() => {
     }
   );
 });
-*/
 
+
+/*
 import sqlite3 from "sqlite3";
 const db = new sqlite3.Database("/tmp/db.sqlite");
 
@@ -71,4 +73,4 @@ db.parallelize(() => {
       }
     }
   );
-});
+});*/
