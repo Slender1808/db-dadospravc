@@ -6,7 +6,7 @@ const db = new sqlite3.Database("/tmp/db.sqlite");
 
 let browser = await startBrowser();
 
-let hrefs = ["http://0.0.0.0:8080/", "http://0.0.0.0:8080/pai/"];
+let hrefs = ["http://0.0.0.0:8080/"];
 let data = String();
 let buffer;
 console.log(hrefs);
@@ -32,7 +32,6 @@ async function insert(href) {
         console.log("duplicado metadata");
         return reject(err);
       } else {
-        console.log(row);
         if (row == undefined) {
           db.run(
             "INSERT INTO metadata (path) VALUES (?);",
@@ -42,8 +41,6 @@ async function insert(href) {
                 console.log("insert_metadata --", err);
                 return reject(err);
               }
-              console.log("insert_metadata ++", this);
-
               db.get(
                 `
                   SELECT path 
@@ -55,7 +52,6 @@ async function insert(href) {
                     console.log("duplicado file");
                     return reject(err);
                   } else {
-                    console.log(data);
                     if (data == undefined) {
                       try {
                         const response = await fetch(href);
@@ -66,20 +62,24 @@ async function insert(href) {
                             .get("Content-Type")
                             .includes("text/html")
                         ) {
-                          console.log("newPage", href);
                           const page = await browser.newPage();
-                          console.log("goto");
                           await page.goto(href, {
                             waitUntil: "domcontentloaded",
                           });
 
                           data = await page.content();
+                          const new_hrefs = await page.$$eval("a", (as) =>
+                            as.map((a) => {
+                              let url = new URL(a.href);
+                              return url.origin + url.pathname;
+                            })
+                          );
                           await page.close();
 
                           db.run(
                             "insert into file (path,data) values (?,?)",
                             [href, data],
-                            function (err) {
+                            async function (err) {
                               console.log("insert_file_data", this);
                               if (err) {
                                 if (err.errno != 19) {
@@ -87,11 +87,15 @@ async function insert(href) {
                                   return reject(err);
                                 }
                               }
-                              return resolve();
+                              await scrap(new_hrefs)
+                                .then(() => {
+                                  return resolve();
+                                })
+                                .catch((err) => {
+                                  return reject(err);
+                                });
                             }
                           );
-
-                          //await scrap(await page.$$eval("a", (as) => as.map((a) => a.href)));
                         } else {
                           buffer = await response.buffer();
 
@@ -99,11 +103,11 @@ async function insert(href) {
                             "insert into file (path,data) values (?,?)",
                             [href, buffer],
                             async function (err) {
-                              if (err.errno != 19) {
+                              if (err) {
                                 console.log("insert_file_buffer --", err);
                                 return reject(err);
                               }
-                              resolve();
+                              return resolve();
                             }
                           );
                         }
