@@ -1,35 +1,53 @@
-import startBrowser from "./browser.mjs";
+//import * as fastq from "fastq";
+//import type { queueAsPromised } from "fastq";
+//const q: queueAsPromised<String> = fastq.promise(asyncWorker, 8);
+
+import startBrowser from "./browser";
 import fetch from "make-fetch-happen";
 
 import sqlite3 from "sqlite3";
-const db = new sqlite3.Database("/tmp/db.sqlite");
+var db = new sqlite3.Database("/tmp/db.sqlite");
 
-let browser = await startBrowser();
+import Queue = require("better-queue");
+const SqliteStore = require("better-queue-sqlite");
 
-let hrefs = ["http://0.0.0.0:8080/"];
-let data = String();
-let buffer;
-console.log(hrefs);
+const store = new SqliteStore({
+  type: "sql",
+  dialect: "sqlite",
+  path: "./queue.db.sqlite",
+});
 
-/*
-const insert_metadata = db.prepare(
-  "INSERT OR IGNORE INTO metadata (path) VALUES (?);"
-);
+const q: Queue = new Queue(asyncWorker, {
+  concurrent: 8,
+  store: store,
+});
 
-const insert_file = db.prepare("insert into file (path,data) values (?,?)");
-*/
+var browser: any;
 
-async function scrap(hrefs) {
-  return Promise.all(hrefs.map((href) => insert(href)));
+main();
+async function main() {
+  browser = await startBrowser();
+
+  let hrefs = ["http://0.0.0.0:8080/"];
+  console.log(hrefs);
+
+  await scrap(hrefs);
 }
 
-async function insert(href) {
+async function scrap(hrefs: string[]) {
+  return Promise.all(hrefs.map((href) => {
+    q.push(href);
+  }))
+}
+
+async function asyncWorker(href: string,cb:any): Promise<any> {
   return new Promise((resolve, reject) => {
     console.log(href);
 
     db.get("SELECT * FROM metadata WHERE path = (?);", href, (err, row) => {
       if (err) {
         console.log("duplicado metadata");
+        cb(null, null);
         return reject(err);
       } else {
         if (row == undefined) {
@@ -39,6 +57,7 @@ async function insert(href) {
             function (err) {
               if (err) {
                 console.log("insert_metadata --", err);
+                cb(null, null);
                 return reject(err);
               }
               db.get(
@@ -50,6 +69,7 @@ async function insert(href) {
                 async (err, data) => {
                   if (err) {
                     console.log("duplicado file");
+                    cb(null, null);
                     return reject(err);
                   } else {
                     if (data == undefined) {
@@ -57,19 +77,18 @@ async function insert(href) {
                         const response = await fetch(href);
                         console.log(response.headers.get("Content-Type"));
 
-                        if (
-                          response.headers
-                            .get("Content-Type")
-                            .includes("text/html")
-                        ) {
+                        const content_type: any =
+                          response.headers.get("Content-Type");
+
+                        if (content_type.includes("text/html")) {
                           const page = await browser.newPage();
                           await page.goto(href, {
                             waitUntil: "domcontentloaded",
                           });
 
                           data = await page.content();
-                          const new_hrefs = await page.$$eval("a", (as) =>
-                            as.map((a) => {
+                          const new_hrefs = await page.$$eval("a", (as: any) =>
+                            as.map((a: any) => {
                               let url = new URL(a.href);
                               return url.origin + url.pathname;
                             })
@@ -79,25 +98,28 @@ async function insert(href) {
                           db.run(
                             "insert into file (path,data) values (?,?)",
                             [href, data],
-                            async function (err) {
+                            async function (err: any) {
                               console.log("insert_file_data", this);
                               if (err) {
                                 if (err.errno != 19) {
                                   console.log("insert_file_data --", err);
+                                  cb(null, null);
                                   return reject(err);
                                 }
                               }
                               await scrap(new_hrefs)
                                 .then(() => {
-                                  return resolve();
+                                  cb(null, null);
+                                  return resolve(null);
                                 })
                                 .catch((err) => {
+                                  cb(null, null);
                                   return reject(err);
                                 });
                             }
                           );
                         } else {
-                          buffer = await response.buffer();
+                          const buffer = await response.buffer();
 
                           db.run(
                             "insert into file (path,data) values (?,?)",
@@ -107,17 +129,20 @@ async function insert(href) {
                                 console.log("insert_file_buffer --", err);
                                 return reject(err);
                               }
-                              return resolve();
+                              cb(null, null);
+                              return resolve(null);
                             }
                           );
                         }
                       } catch (err) {
                         // An error occurred
                         console.log("catch", err);
+                        cb(null, null);
                         reject(err);
                       }
                     } else {
-                      return resolve();
+                      cb(null, null);
+                      return resolve(null);
                     }
                   }
                 }
@@ -125,21 +150,10 @@ async function insert(href) {
             }
           );
         } else {
-          return resolve();
+          cb(null, null);
+          return resolve(null);
         }
       }
     });
   });
 }
-
-db.serialize(() => {
-  scrap(hrefs)
-    .catch((error) => {
-      console.log(error);
-    })
-    .finally(async () => {
-      console.log("scrap finally --------");
-      db.close();
-      await browser.close();
-    });
-});
