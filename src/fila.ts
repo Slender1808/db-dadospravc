@@ -14,17 +14,53 @@ const SqliteStore = require("better-queue-sqlite");
 const store = new SqliteStore({
   type: "sql",
   dialect: "sqlite",
-  path: "./queue.db.sqlite",
+  path: "/tmp/queue.db.sqlite",
 });
 
 const q: Queue = new Queue(asyncWorker, {
-  concurrent: 8,
+  concurrent: 16,
   store: store,
+  maxTimeout: 3000,
+  maxRetries: 3,
+  retryDelay: 1000,
 });
 
 q.on("task_failed", function (taskId: any, err: any, stats: any) {
   console.log("task_finish", taskId, err, stats);
+  console.log();
 });
+
+q.on("empty", function () {
+  console.log("empty");
+});
+
+var batch_finish = false;
+var drain_count = 0;
+q.on("batch_finish", function () {
+  batch_finish = true;
+});
+
+q.on("task_queued", function () {
+  batch_finish = false;
+});
+
+const intervalId = setInterval(() => {
+  drain_count = drain_count + (batch_finish ? 1 : 0);
+  console.log(drain_count);
+  if (drain_count === 16) {
+    clearInterval(intervalId);
+    finally_proc();
+    drain_count = 0;
+  }
+}, 3000);
+
+async function finally_proc() {
+  const numberOfOpenPages = (await browser.pages()).length;
+  console.log("number Of Open Pages", numberOfOpenPages);
+  if (numberOfOpenPages == 0) {
+    console.log("finally");
+  }
+}
 
 var browser: any;
 
@@ -32,7 +68,12 @@ main();
 async function main() {
   browser = await startBrowser();
 
-  let hrefs = ["http://0.0.0.0:8080/"];
+  browser.on("disconnected", async () => {
+    console.log("disconnected browser");
+    console.log("----------------");
+  });
+
+  let hrefs = ["https://en.wikipedia.org/wiki/Main_Page"];
   console.log(hrefs);
 
   await scrap(hrefs);
@@ -69,6 +110,7 @@ async function asyncWorker(href: string, cb: any): Promise<any> {
                 cb(null, null);
               } else {
                 if (data == undefined) {
+                  let page;
                   try {
                     const response = await fetch(href);
                     console.log(response.headers.get("Content-Type"));
@@ -77,35 +119,56 @@ async function asyncWorker(href: string, cb: any): Promise<any> {
                       response.headers.get("Content-Type");
 
                     if (content_type.includes("text/html")) {
-                      const page = await browser.newPage();
+                      page = await browser.newPage();
                       await page.goto(href, {
                         waitUntil: "domcontentloaded",
                       });
-
                       data = await page.content();
-                      const new_hrefs = await page.$$eval("a", (as: any) =>
-                        as.map((a: any) => {
-                          let url = new URL(a.href);
-                          return url.origin + url.pathname;
-                        })
-                      );
-                      await page.close();
 
-                      db.run(
-                        "insert into file (path,data) values (?,?)",
-                        [href, data],
-                        async function (err: any) {
-                          console.log("insert_file_data", this);
-                          if (err) {
-                            if (err.errno != 19) {
-                              console.log("insert_file_data --", err);
-                              cb(null, null);
-                            }
-                          }
-                          scrap(new_hrefs);
+                      try {
+                        const links_e = await page.$$("a");
+                        let new_hrefs: Array<string> = [];
+                        for (const link of links_e) {
+                          new_hrefs.push(
+                            await link.evaluate((node: any) =>
+                              node.getAttribute("href")
+                            )
+                          );
                         }
-                      );
+
+                        new_hrefs = new_hrefs.map((new_href: string) => {
+                          try {
+                            new URL(new_href);
+                            return new_href;
+                          } catch (err) {
+                            let url = new URL(href);
+                            return url.origin + new_href;
+                          }
+                        });
+
+                        await page.close();
+
+                        db.run(
+                          "insert into file (path,data) values (?,?)",
+                          [href, data],
+                          async function (err: any) {
+                            console.log("insert_file_data", this);
+                            if (err) {
+                              if (err.errno != 19) {
+                                console.log("insert_file_data --", err);
+                                cb(null, null);
+                              }
+                            }
+                            scrap(new_hrefs);
+                          }
+                        );
+                      } catch (err) {
+                        await page.close();
+                        console.log("catch get links", err);
+                        cb(err);
+                      }
                     } else {
+                      /*
                       const buffer = await response.buffer();
 
                       db.run(
@@ -117,12 +180,14 @@ async function asyncWorker(href: string, cb: any): Promise<any> {
                           }
                           cb(null, null);
                         }
-                      );
+                      );*/
+
+                      cb(null, null);
                     }
                   } catch (err) {
                     // An error occurred
-                    console.log("catch", err);
-                    cb(null, null);
+                    console.log("catch fetch", err, href);
+                    cb(err);
                   }
                 } else {
                   cb(null, null);
