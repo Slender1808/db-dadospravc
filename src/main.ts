@@ -6,7 +6,7 @@ import startBrowser from "./browser";
 import fetch from "make-fetch-happen";
 
 import sqlite3 from "sqlite3";
-var db = new sqlite3.Database("/home/jadson/desktop/buscador/wikipedia.sqlite");
+var db = new sqlite3.Database("/tmp/db.sqlite");
 
 import Queue = require("better-queue");
 const SqliteStore = require("better-queue-sqlite");
@@ -14,12 +14,13 @@ const SqliteStore = require("better-queue-sqlite");
 const store = new SqliteStore({
   type: "sql",
   dialect: "sqlite",
-  path: "/home/jadson/desktop/buscador/queue.db.sqlite",
+  path: "/tmp/queue.db.sqlite",
 });
 
 var batch_finish = false;
 var drain_count = 0;
 var intervalId: any;
+var recursive = false;
 
 const q: Queue = new Queue(asyncWorker, {
   concurrent: 16,
@@ -76,10 +77,10 @@ async function main() {
     console.log("----------------");
   });
 
-  let hrefs = ["https://en.wikipedia.org/wiki/Main_Page"];
-  console.log(hrefs);
+  //let hrefs = ["https://en.wikipedia.org/wiki/Main_Page"];
+  //console.log(hrefs);
 
-  scrap(hrefs);
+  //scrap(hrefs);
 }
 
 async function scrap(hrefs: string[]) {
@@ -168,8 +169,10 @@ async function asyncWorker(href: string, cb: any) {
                                   cb(null, null);
                                 }
                               }
-
-                              scrap(new_hrefs);
+                              if(recursive){
+                                scrap(new_hrefs);
+                              }
+                              
                               cb(null, null);
                             }
                           );
