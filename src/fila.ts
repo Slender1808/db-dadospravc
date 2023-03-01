@@ -6,7 +6,7 @@ import startBrowser from "./browser";
 import fetch from "make-fetch-happen";
 
 import sqlite3 from "sqlite3";
-var db = new sqlite3.Database("/home/jadson/desktop/buscador/wikipedia.sqlite");
+var db = new sqlite3.Database("/home/jadson/desktop/buscador/net/db.sqlite");
 
 import Queue = require("better-queue");
 const SqliteStore = require("better-queue-sqlite");
